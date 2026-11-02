@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>HiRoko - 音みくじ (Musical Fortune)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Cormorant Garamond, Cinzel, Noto Serif JP, Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Noto+Serif+JP:wght@300;400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            midnight: '#070b14',
+            'midnight-card': '#0b1325',
+            'gold-primary': '#d4af37',
+            'gold-light': '#f5e7a9',
+            'gold-dark': '#9b7d25',
+            'gold-subtle': '#4a3e1b'
+          },
+          fontFamily: {
+            serif: ['"Cormorant Garamond"', '"Noto Serif JP"', 'serif'],
+            display: ['"Cinzel"', 'serif'],
+            sans: ['"Inter"', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* 星空と背景のグラデーション */
+    body {
+      background: radial-gradient(circle at 50% 20%, #111e3b 0%, #080d19 65%, #04060b 100%);
+      min-height: 100vh;
+      color: #e5e7eb;
+      overflow-x: hidden;
+      touch-action: manipulation;
+    }
+
+    /* 金色の光彩・テクスチャ装飾 */
+    .gold-gradient-text {
+      background: linear-gradient(135deg, #f7eec5 0%, #d4af37 50%, #997519 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .gold-border {
+      border-color: rgba(212, 175, 55, 0.45);
+    }
+
+    .gold-glow {
+      box-shadow: 0 0 25px rgba(212, 175, 55, 0.22), inset 0 0 15px rgba(212, 175, 55, 0.1);
+    }
+
+    .gold-glow-strong {
+      box-shadow: 0 0 35px rgba(245, 231, 169, 0.4), 0 0 10px rgba(212, 175, 55, 0.3);
+    }
+
+    /* 3Dカードフリップとアニメーション */
+    .perspective-1000 {
+      perspective: 1200px;
+    }
+
+    .card-inner {
+      transition: transform 0.85s cubic-bezier(0.34, 1.3, 0.64, 1);
+      transform-style: preserve-3d;
+    }
+
+    .card-flipped {
+      transform: rotateY(180deg);
+    }
+
+    .card-face {
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+
+    .card-back {
+      transform: rotateY(180deg);
+    }
+
+    /* 繊細な音波波紋アニメーション */
+    @keyframes ripple {
+      0% { transform: scale(0.85); opacity: 0.9; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+
+    .animate-ripple {
+      animation: ripple 2.2s cubic-bezier(0.1, 0.5, 0.3, 1) infinite;
+    }
+
+    /* 光の粒子浮遊 */
+    @keyframes floatParticle {
+      0% { transform: translateY(0) scale(0.9); opacity: 0.3; }
+      50% { transform: translateY(-20px) scale(1.1); opacity: 0.8; }
+      100% { transform: translateY(-40px) scale(0.9); opacity: 0; }
+    }
+
+    /* スクロールバー装飾 */
+    ::-webkit-scrollbar {
+      width: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #080d19;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(212, 175, 55, 0.3);
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="font-sans antialiased selection:bg-gold-primary selection:text-midnight">
+
+  <!-- 背景星空パーティクル描画用 Canvas -->
+  <canvas id="ambientCanvas" class="fixed inset-0 pointer-events-none z-0"></canvas>
+
+  <!-- メインコンテナ (モバイルファースト) -->
+  <div class="relative z-10 max-w-md mx-auto min-h-screen flex flex-col justify-between px-4 py-6">
+
+    <!-- ヘッダー -->
+    <header class="text-center pt-2 pb-4">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-gold-primary/30 bg-midnight-card/60 backdrop-blur-md mb-2">
+        <span class="w-1.5 h-1.5 rounded-full bg-gold-primary animate-pulse"></span>
+        <span class="font-display tracking-widest text-[11px] text-gold-light uppercase">NFC Acoustic Fortune</span>
+      </div>
+      <h1 class="font-serif tracking-widest text-2xl font-light text-white flex items-center justify-center gap-2">
+        <span>音</span><span class="text-xs text-gold-primary">◆</span><span>み</span><span class="text-xs text-gold-primary">◆</span><span>く</span><span class="text-xs text-gold-primary">◆</span><span>じ</span>
+      </h1>
+      <p class="font-serif italic text-xs text-gray-400 mt-0.5 tracking-wider">Harmonic Resonance of Today</p>
+    </header>
+
+    <!-- メイン表示エリア (カード & 演出) -->
+    <main class="flex-1 flex flex-col items-center justify-center relative my-2">
+
+      <!-- ================= 1. おみくじ待機画面 (TUNING VIEW) ================= -->
+      <section id="tuningView" class="w-full flex flex-col items-center transition-all duration-700">
+        
+        <!-- カード3Dコンテナ -->
+        <div class="perspective-1000 w-[240px] h-[380px] sm:w-[260px] sm:h-[410px] relative cursor-pointer group" id="cardMockup" onclick="startFortuneTuning()">
+          
+          <!-- 周囲の音波エフェクト（調律中） -->
+          <div id="soundRipple" class="hidden absolute inset-0 -m-8 rounded-3xl border border-gold-primary/30 pointer-events-none animate-ripple"></div>
+          <div id="soundRipple2" class="hidden absolute inset-0 -m-14 rounded-3xl border border-gold-light/20 pointer-events-none animate-ripple" style="animation-delay: 0.6s;"></div>
+
+          <!-- カード本体 -->
+          <div class="card-inner w-full h-full relative rounded-2xl shadow-2xl transition-transform duration-700">
+            
+            <!-- カード表面 (オラクルカード・デザイン再現) -->
+            <div class="card-face w-full h-full absolute inset-0 bg-[#091124] border-2 border-gold-primary/70 rounded-2xl p-3 flex flex-col justify-between overflow-hidden shadow-2xl gold-glow group-hover:scale-[1.02] transition-transform">
+              
+              <!-- アールヌーヴォー風コーナー装飾 -->
+              <div class="absolute inset-2 border border-gold-primary/30 rounded-xl pointer-events-none"></div>
+              
+              <!-- 装飾アイコン (四隅) -->
+              <div class="absolute top-3 left-3 text-gold-primary/50 text-[10px]">✤</div>
+              <div class="absolute top-3 right-3 text-gold-primary/50 text-[10px]">✤</div>
+              <div class="absolute bottom-3 left-3 text-gold-primary/50 text-[10px]">✤</div>
+              <div class="absolute bottom-3 right-3 text-gold-primary/50 text-[10px]">✤</div>
+
+              <!-- 上部装飾アーチ -->
+              <div class="text-center pt-2">
+                <svg class="w-12 h-6 mx-auto text-gold-primary/60" viewBox="0 0 100 40" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M10 35 C30 5, 70 5, 90 35 M25 35 C40 18, 60 18, 75 35" />
+                  <circle cx="50" cy="16" r="2.5" fill="currentColor" />
+                </svg>
+              </div>
+
+              <!-- 中央：バイオリンとHiRokoモチーフ -->
+              <div class="flex-1 flex flex-col items-center justify-center my-1 relative">
+                <!-- バイオリンシルエットと光彩 -->
+                <div class="relative w-28 h-32 flex items-center justify-center">
+                  <!-- 金色のバイオリン簡易SVG -->
+                  <svg class="w-24 h-28 text-gold-primary drop-shadow-[0_0_12px_rgba(212,175,55,0.4)]" viewBox="0 0 100 130" fill="none" stroke="currentColor">
+                    <!-- ヘッド＆スクロール -->
+                    <circle cx="50" cy="14" r="5" stroke-width="1.8" />
+                    <line x1="47" y1="19" x2="53" y2="19" stroke-width="2" />
+                    <line x1="48" y1="23" x2="52" y2="23" stroke-width="2" />
+                    <path d="M48 24 L48 45 M52 24 L52 45" stroke-width="1.8" />
+                    <!-- ボディ (優美なくびれ) -->
+                    <path d="M38 52 C35 60, 42 66, 44 72 C42 82, 30 92, 33 108 C36 122, 64 122, 67 108 C70 92, 58 82, 56 72 C58 66, 65 60, 62 52 C59 44, 41 44, 38 52 Z" stroke-width="1.8" fill="rgba(212, 175, 55, 0.08)" />
+                    <!-- f字孔 -->
+                    <path d="M43 78 Q46 84 42 90" stroke-width="1.5" stroke-linecap="round" />
+                    <path d="M57 78 Q54 84 58 90" stroke-width="1.5" stroke-linecap="round" />
+                    <!-- 弦 -->
+                    <line x1="48" y1="30" x2="48" y2="105" stroke-width="0.8" opacity="0.6" />
+                    <line x1="52" y1="30" x2="52" y2="105" stroke-width="0.8" opacity="0.6" />
+                  </svg>
+                </div>
+
+                <!-- HiRoko ロゴ風カリグラフィ -->
+                <div class="font-serif italic text-3xl font-bold tracking-wider gold-gradient-text -mt-3">
+                  HiRoko
+                </div>
+              </div>
+
+              <!-- 下部：オラクル銘文 -->
+              <div class="text-center pb-2 border-t border-gold-primary/25 pt-2">
+                <div class="font-display tracking-[0.25em] text-[11px] text-gold-light uppercase">THE HARMONY</div>
+                <div class="font-serif text-[9px] text-gold-primary/80 tracking-widest mt-0.5">FORTUNE & RESONANCE</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 調律開始ボタン -->
+        <div class="mt-8 flex flex-col items-center">
+          <button id="tuneBtn" onclick="startFortuneTuning()" class="relative group px-8 py-3.5 rounded-full overflow-hidden border border-gold-primary bg-gradient-to-r from-[#172547] via-[#213563] to-[#172547] shadow-lg gold-glow transition-all duration-300 active:scale-95">
+            <!-- ボタン内ホバー光 -->
+            <div class="absolute inset-0 bg-gold-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div class="flex items-center gap-3">
+              <svg class="w-4 h-4 text-gold-light animate-spin-slow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="9"/>
+                <path d="M12 3v4M12 17v4M3 12h4M17 12h4"/>
+              </svg>
+              <span class="font-serif tracking-widest text-sm text-gold-light font-medium">運勢を調律する</span>
+              <span class="text-xs text-gold-primary font-display font-light">♬</span>
+            </div>
+          </button>
+          <p class="font-serif text-[11px] text-gray-400 mt-2.5 tracking-wider">※カードをタップしても調律が始まります</p>
+        </div>
+
+      </section>
+
+      <!-- ================= 2. 調律中ローディング演出 ================= -->
+      <section id="tuningProgress" class="hidden w-full flex-col items-center justify-center text-center py-12">
+        <div class="relative w-28 h-28 flex items-center justify-center mb-6">
+          <div class="absolute inset-0 rounded-full border border-gold-primary/30 animate-ping"></div>
+          <div class="w-20 h-20 rounded-full border border-gold-primary/70 flex items-center justify-center bg-midnight-card/80 gold-glow">
+            <span class="text-2xl animate-pulse text-gold-light">🎻</span>
+          </div>
+        </div>
+        <h3 id="tuningPitchText" class="font-display tracking-[0.2em] text-lg text-gold-light font-medium">TUNING 442Hz...</h3>
+        <p id="tuningMessageText" class="font-serif text-xs text-gray-300 mt-2 tracking-widest">心の周波数を整えています</p>
+      </section>
+
+      <!-- ================= 3. おみくじ結果画面 (RESULT VIEW) ================= -->
+      <section id="resultView" class="hidden w-full flex-col items-center animate-fadeIn">
+        
+        <!-- 結果カードコンテナ -->
+        <div class="w-full bg-[#0a1122]/95 border-2 border-gold-primary/60 rounded-2xl p-5 shadow-2xl gold-glow backdrop-blur-md relative overflow-hidden">
+          
+          <!-- 背景の薄いバイオリン透かし -->
+          <div class="absolute -right-8 -bottom-10 opacity-5 pointer-events-none">
+            <svg class="w-56 h-56 text-gold-primary" viewBox="0 0 100 130" fill="currentColor">
+              <path d="M38 52 C35 60, 42 66, 44 72 C42 82, 30 92, 33 108 C36 122, 64 122, 67 108 C70 92, 58 82, 56 72 C58 66, 65 60, 62 52 Z"/>
+            </svg>
+          </div>
+
+          <!-- 四隅の装飾ライン -->
+          <div class="absolute inset-1.5 border border-gold-primary/20 rounded-xl pointer-events-none"></div>
+
+          <!-- ヘッダー：音楽標語 & 運勢階級 -->
+          <div class="text-center pb-3 border-b border-gold-primary/30 relative">
+            <div class="flex items-center justify-between text-[11px] text-gray-400 font-serif px-2">
+              <span id="resultNumber">No. 01</span>
+              <span id="resultDate">2026.11.02</span>
+            </div>
+            
+            <!-- 運勢名 -->
+            <div class="mt-1">
+              <div id="resultItalian" class="font-display text-xs text-gold-primary/90 tracking-widest uppercase">FORTISSISSIMO (fff)</div>
+              <h2 id="resultFortuneTitle" class="font-serif text-3xl font-bold tracking-widest text-gold-light mt-0.5">超 大 吉</h2>
+              <div id="resultTagline" class="font-serif italic text-xs text-gold-light/80 mt-1">「全開のクレッシェンド。夢へ駆け抜ける日」</div>
+            </div>
+
+            <!-- 音声再生ボタン (Web Audioで奏でる) -->
+            <button onclick="playResultMelody()" class="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gold-primary/10 border border-gold-primary/40 hover:bg-gold-primary/20 transition-colors text-gold-light text-xs font-serif">
+              <svg class="w-3.5 h-3.5 text-gold-primary" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              <span>この運勢の旋律を聴く</span>
+            </button>
+          </div>
+
+          <!-- 本文セクション -->
+          <div class="py-4 space-y-4 text-xs font-serif leading-relaxed">
+            
+            <!-- 今日の旋律メッセージ -->
+            <div class="bg-midnight-card/80 p-3 rounded-lg border border-gold-primary/20">
+              <div class="flex items-center gap-1.5 text-gold-light font-medium mb-1 tracking-wider">
+                <span class="text-gold-primary">✦</span> 今日の旋律（メッセージ）
+              </div>
+              <p id="resultMessage" class="text-gray-200 pl-4 border-l-2 border-gold-primary/40">
+                あなたの心の奥底にある情熱が、最も鮮やかな響きとなって周囲を魅了します。迷わずに強い音色を奏でてください。
+              </p>
+            </div>
+
+            <!-- 調律ヒント & 開運ボウイング -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div class="bg-midnight-card/50 p-2.5 rounded-lg border border-gold-primary/15">
+                <div class="text-[11px] text-gold-primary font-medium flex items-center gap-1 mb-0.5">
+                  <span>🎻</span> チューニング（整え）
+                </div>
+                <div id="resultTuningAdvice" class="text-gray-300">
+                  442Hzの澄んだ意識。朝一番に窓を開けて深呼吸を。
+                </div>
+              </div>
+
+              <div class="bg-midnight-card/50 p-2.5 rounded-lg border border-gold-primary/15">
+                <div class="text-[11px] text-gold-primary font-medium flex items-center gap-1 mb-0.5">
+                  <span>✨</span> 開運ボウイング
+                </div>
+                <div id="resultBowingAction" class="text-gray-300">
+                  ダウンボウ（堂々と背筋を伸ばし、胸を開く仕草）。
+                </div>
+              </div>
+            </div>
+
+            <!-- ラッキーコード & カラー -->
+            <div class="flex items-center justify-between px-3 py-2 bg-midnight/70 rounded-lg border border-gold-primary/20 text-center">
+              <div>
+                <span class="text-[10px] text-gray-400 block font-sans">LUCKY CHORD</span>
+                <span id="resultLuckyChord" class="font-display text-gold-light font-semibold">D Major (歓喜の響き)</span>
+              </div>
+              <div class="w-px h-6 bg-gold-primary/20"></div>
+              <div>
+                <span class="text-[10px] text-gray-400 block font-sans">LUCKY COLOR</span>
+                <span id="resultLuckyColor" class="font-serif text-gold-light">琥珀色 (Rosin Gold)</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- アクションフッター (シェア & コレクション) -->
+          <div class="pt-3 border-t border-gold-primary/25 flex flex-col gap-2">
+            <button onclick="shareFortuneResult()" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-gold-dark via-gold-primary to-gold-dark text-midnight font-medium text-xs tracking-widest flex items-center justify-center gap-2 shadow-md hover:brightness-110 active:scale-98 transition-all">
+              <svg class="w-3.5 h-3.5 text-midnight" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z"/>
+              </svg>
+              <span>結果を響かせる（シェア）</span>
+            </button>
+
+            <div class="flex gap-2">
+              <button onclick="toggleHistoryModal(true)" class="flex-1 py-2 rounded-lg border border-gold-primary/30 bg-midnight-card/40 text-gold-light text-[11px] font-serif hover:bg-gold-primary/10 transition-colors">
+                📜 過去の調律ログ
+              </button>
+              <button onclick="resetFortuneForTesting()" class="px-3 py-2 rounded-lg border border-gold-primary/20 text-gray-400 text-[11px] font-serif hover:text-white hover:bg-white/5 transition-colors" title="テスト用：もう一度引く">
+                ↻ もう一度引く
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- フッター署名 -->
+    <footer class="text-center py-2 relative z-10">
+      <div class="font-serif italic text-gold-primary/80 text-sm tracking-wider">HiRoko</div>
+      <p class="font-serif text-[10px] text-gray-500 tracking-widest mt-0.5">Acoustic Resonance & Fortune Amulet</p>
+    </footer>
+
+  </div>
+
+  <!-- ================= 4. 調律履歴 (コレクション) モーダル ================= -->
+  <div id="historyModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-[#0b1325] border border-gold-primary/50 w-full max-w-sm rounded-2xl p-5 shadow-2xl relative max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between pb-3 border-b border-gold-primary/30">
+        <h3 class="font-serif text-gold-light text-base tracking-widest flex items-center gap-2">
+          <span>📜</span> 調律の軌跡（コレクション）
+        </h3>
+        <button onclick="toggleHistoryModal(false)" class="text-gray-400 hover:text-white text-lg px-2">✕</button>
+      </div>
+
+      <div id="historyList" class="flex-1 overflow-y-auto py-3 space-y-2 text-xs font-serif">
+        <!-- JSで動的に追加 -->
+      </div>
+
+      <div class="pt-3 border-t border-gold-primary/20 text-center">
+        <button onclick="toggleHistoryModal(false)" class="w-full py-2 rounded-lg bg-gold-primary/20 text-gold-light text-xs font-serif hover:bg-gold-primary/30">
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full bg-gold-primary text-midnight text-xs font-medium shadow-lg z-50 opacity-0 pointer-events-none transition-all duration-300">
+    メッセージ
+  </div>
+
+  <!-- ================= JavaScript 実装 ================= -->
+  <script>
+    /**
+     * 音楽的おみくじデータ一覧
+     * 音楽記号・演奏法・テンポをテーマにした深みのある7つの吉凶パターン
+     */
+    const FORTUNE_DATABASE = [
+      {
+        id: 'fff',
+        tempo: 'Fortississimo (fff)',
+        title: '超 大 吉',
+        tagline: '「全開のクレッシェンド。夢へ駆け抜ける最高潮の日」',
+        message: 'あなたの内なる情熱が最高峰の響きとなって周囲を照らす絶好調の運勢です。迷うことなく、心惹かれる方角へ堂々と弓を走らせてください。',
+        tuning: '442Hzの冴え渡る直感。朝一番に姿勢を正して背筋を伸ばす。',
+        bowing: 'フルボウ（弓の根元から先まで使い切るような大胆な行動）。',
+        chord: 'D Major (歓喜の響き)',
+        color: '琥珀ゴールド (Rosin Gold)',
+        notes: [587.33, 739.99, 880.00, 1174.66] // D5, F#5, A5, D6 (輝かしいDコード)
+      },
+      {
+        id: 'vivace',
+        tempo: 'Vivace (ヴィヴァーチェ)',
+        title: '大 吉',
+        tagline: '「躍動のスピッカート。軽快に跳ねる弓のように幸運を掴む日」',
+        message: '生き生きとしたリズムがあなたの一日を加速させます。思いがけないひらめきや軽やかな決断が、素晴らしい出会いや成果を引き寄せます。',
+        tuning: 'フットワークを軽く。お気に入りのアップテンポな曲を聴く。',
+        bowing: 'スピッカート（弾むように軽快な足取りで出かける）。',
+        chord: 'G Major (希望の朝)',
+        color: 'ルビーバーガンディ (Bordeaux Red)',
+        notes: [392.00, 493.88, 587.33, 783.99] // G4, B4, D5, G5
+      },
+      {
+        id: 'allegro',
+        tempo: 'Allegro (アレグロ)',
+        title: '中 吉',
+        tagline: '「心弾む主旋律。周囲とのアンサンブルが心地よく響く調和の日」',
+        message: 'あなたの奏でる言葉や笑顔が、周囲と心地よく共鳴します。協力者や友人とテンポを合わせることで、思い描いていた企画や目標が前進します。',
+        tuning: '肩の力を抜いた自然体の呼吸。温かい紅茶でひと息。',
+        bowing: 'デタシェ（一音一音を丁寧に、誠実な会話を重ねる）。',
+        chord: 'A Major (華やかな共鳴)',
+        color: 'シャンパンゴールド (Champagne)',
+        notes: [440.00, 554.37, 659.25, 880.00] // A4, C#5, E5, A5
+      },
+      {
+        id: 'andante',
+        tempo: 'Andante (アンダンテ)',
+        title: '小 吉',
+        tagline: '「歩くようなテンポで。焦らずマイペースに豊かな余韻を味わう日」',
+        message: '急ぎ足の日常から少し歩調を緩めると、見落としていた美しい景色に気づけます。じっくりと育てる作業や読書、丁寧な手仕事にツキがあります。',
+        tuning: '深く長い腹式呼吸。スマホを置いて静寂の10分を設ける。',
+        bowing: 'テヌート（ひとつひとつの動作を落ち着いて保つ）。',
+        chord: 'F Major (牧歌的な温もり)',
+        color: 'フォレストモスグリーン (Forest)',
+        notes: [349.23, 440.00, 523.25, 698.46] // F4, A4, C5, F5
+      },
+      {
+        id: 'cantabile',
+        tempo: 'Cantabile (カンタービレ)',
+        title: '歌 吉',
+        tagline: '「歌うように語る。あなたの言葉が誰かをそっと癒す日」',
+        message: 'まるでバイオリンの甘美な旋律のように、あなたの優しい感情がストレートに相手の心へ届きます。感謝や温かい気持ちを言葉にしてみましょう。',
+        tuning: '喉と心を潤すハーブティー。好きな香りを纏う。',
+        bowing: 'エスプレッシーヴォ（感情豊かに、優しく微笑みかける）。',
+        chord: 'E♭ Major (慈愛と包容)',
+        color: 'ローズウッド (Warm Rose)',
+        notes: [311.13, 392.00, 466.16, 622.25] // Eb4, G4, Bb4, Eb5
+      },
+      {
+        id: 'fermata',
+        tempo: 'Fermata (フェルマータ)',
+        title: '整 吉',
+        tagline: '「心地よい静寂と休息。次の楽章に向けエネルギーを蓄える日」',
+        message: '音楽において休符は「祈り」の時間です。無理に音を出そうとせず、良質な睡眠やリフレッシュに徹することで、明日からまた力強く羽ばたけます。',
+        tuning: '入浴で体を温め、432Hzなどのヒーリング音楽でリセット。',
+        bowing: 'レスト（弓をそっと弦から離し、全身を脱力させる）。',
+        chord: 'C Major (純粋なる原点)',
+        color: 'ミッドナイトネイビー (Deep Blue)',
+        notes: [261.63, 329.63, 392.00, 523.25] // C4, E4, G4, C5
+      },
+      {
+        id: 'cadenza',
+        tempo: 'Cadenza (カデンツァ / 独奏吉)',
+        title: '幻 の 独 奏 吉',
+        tagline: '「あなたが主役のソロステージ。奇跡的な直感が降り注ぐ神秘の日」',
+        message: '指揮者もオーケストラも息を呑み、あなたの一音を見つめています。前例にとらわれないあなたの独創的なアイデアが、周囲を大きく感動させる特別な日です。',
+        tuning: '自分だけの感性を信じ切ること。ひらめきを即メモ。',
+        bowing: 'アルペジオ（枠組みを自由に飛び越える大胆な飛翔）。',
+        chord: 'B Minor to Major (ドラマティックな転調)',
+        color: 'オーロラホログラム (Prism Gold)',
+        notes: [493.88, 587.33, 739.99, 987.77, 1174.66] // B4, D5, F#5, B5, D6
+      }
+    ];
+
+    // ================= Web Audio API によるバイオリン風シンセサイズ =================
+    let audioCtx = null;
+
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    /**
+     * バイオリンのピチカート（弦を指で弾く音）の合成
+     */
+    function playPizzicato(freq, timeOffset = 0, duration = 1.2) {
+      try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime + timeOffset;
+
+        // 三角波（柔らかい弦の芯）と微小なノコギリ波（弦の擦れ成分）
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(freq, now);
+
+        osc2.type = 'sawtooth';
+        osc2.frequency.setValueAtTime(freq * 2, now); // 倍音
+
+        // ローパスフィルターで丸みのある木の共鳴
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(freq * 3.5, now);
+        filter.frequency.exponentialRampToValueAtTime(freq * 0.8, now + duration);
+
+        // エンベロープ：急峻な立ち上がり、豊かな減衰
+        gainNode.gain.setValueAtTime(0.001, now);
+        gainNode.gain.linearRampToValueAtTime(0.3, now + 0.015);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+        osc1.connect(filter);
+        osc2.connect(filter);
+        filter.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + duration);
+        osc2.stop(now + duration);
+      } catch (e) {
+        console.warn('Audio not allowed or supported', e);
+      }
+    }
+
+    /**
+     * 調律中のA=442Hzの純正調ハーモニクス音
+     */
+    function playTuningDrone() {
+      try {
+        const ctx = getAudioContext();
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(442, now); // A線 442Hz
+
+        gain.gain.setValueAtTime(0.001, now);
+        gain.gain.linearRampToValueAtTime(0.18, now + 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.6);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 1.6);
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+
+    /**
+     * 現在の運勢のコード（和音）アルペジオを奏でる
+     */
+    let currentResult = null;
+    function playResultMelody() {
+      if (!currentResult) return;
+      const notes = currentResult.notes;
+      notes.forEach((freq, idx) => {
+        playPizzicato(freq, idx * 0.16, 1.8);
+      });
+    }
+
+    // ================= おみくじの実行制御 =================
+    const STORAGE_KEY = 'hiroko_fortune_history';
+    const LAST_DATE_KEY = 'hiroko_fortune_last_date';
+
+    function getTodayString() {
+      const d = new Date();
+      return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function startFortuneTuning() {
+      // ユーザー操作契機でオーディオコンテキストを初期化
+      getAudioContext();
+      
+      const soundRipple = document.getElementById('soundRipple');
+      const soundRipple2 = document.getElementById('soundRipple2');
+      const tuningView = document.getElementById('tuningView');
+      const tuningProgress = document.getElementById('tuningProgress');
+      const cardMockup = document.getElementById('cardMockup');
+
+      // ピチカート開始音
+      playPizzicato(442, 0, 0.8);
+      playPizzicato(659.25, 0.12, 1.0); // E線
+
+      // 波紋演出表示
+      soundRipple.classList.remove('hidden');
+      soundRipple2.classList.remove('hidden');
+
+      // 演出切り替え
+      setTimeout(() => {
+        tuningView.classList.add('opacity-0', 'scale-95');
+        setTimeout(() => {
+          tuningView.classList.add('hidden');
+          tuningProgress.classList.remove('hidden');
+          tuningProgress.classList.add('flex');
+          playTuningDrone();
+          simulateTuningSteps();
+        }, 400);
+      }, 500);
+    }
+
+    function simulateTuningSteps() {
+      const pitches = ['TUNING 440Hz...', 'TUNING 442Hz...', 'HARMONICS RESONANCE...'];
+      let step = 0;
+      const pitchEl = document.getElementById('tuningPitchText');
+
+      const interval = setInterval(() => {
+        step++;
+        if (step < pitches.length) {
+          pitchEl.textContent = pitches[step];
+          playPizzicato(554.37 + step * 50, 0, 0.6);
+        } else {
+          clearInterval(interval);
+          finishTuningAndReveal();
+        }
+      }, 700);
+    }
+
+    function finishTuningAndReveal() {
+      // 運勢を決定（レアのカデンツァは約5%の確率）
+      const rand = Math.random();
+      let picked;
+      if (rand < 0.06) {
+        picked = FORTUNE_DATABASE.find(f => f.id === 'cadenza');
+      } else {
+        const normals = FORTUNE_DATABASE.filter(f => f.id !== 'cadenza');
+        picked = normals[Math.floor(Math.random() * normals.length)];
+      }
+
+      currentResult = picked;
+      saveFortuneToHistory(picked);
+
+      // DOM反映
+      document.getElementById('resultNumber').textContent = `No. ${String(Math.floor(Math.random() * 80) + 1).padStart(2, '0')}`;
+      document.getElementById('resultDate').textContent = getTodayString();
+      document.getElementById('resultItalian').textContent = picked.tempo;
+      document.getElementById('resultFortuneTitle').textContent = picked.title;
+      document.getElementById('resultTagline').textContent = picked.tagline;
+      document.getElementById('resultMessage').textContent = picked.message;
+      document.getElementById('resultTuningAdvice').textContent = picked.tuning;
+      document.getElementById('resultBowingAction').textContent = picked.bowing;
+      document.getElementById('resultLuckyChord').textContent = picked.chord;
+      document.getElementById('resultLuckyColor').textContent = picked.color;
+
+      // 画面切り替え
+      const tuningProgress = document.getElementById('tuningProgress');
+      const resultView = document.getElementById('resultView');
+
+      tuningProgress.classList.add('opacity-0');
+      setTimeout(() => {
+        tuningProgress.classList.add('hidden');
+        tuningProgress.classList.remove('flex');
+        resultView.classList.remove('hidden');
+        resultView.classList.add('flex');
+
+        // 結果の和音を自動再生
+        playResultMelody();
+      }, 400);
+    }
+
+    // ================= 履歴・ストレージ管理 =================
+    function getHistory() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveFortuneToHistory(item) {
+      const history = getHistory();
+      const record = {
+        title: item.title,
+        tempo: item.tempo,
+        chord: item.chord,
+        date: getTodayString(),
+        timestamp: Date.now()
+      };
+      history.unshift(record);
+      // 最新15件まで保持
+      if (history.length > 15) history.pop();
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+        localStorage.setItem(LAST_DATE_KEY, getTodayString());
+      } catch (e) {}
+    }
+
+    function renderHistory() {
+      const listEl = document.getElementById('historyList');
+      const history = getHistory();
+
+      if (history.length === 0) {
+        listEl.innerHTML = `<div class="text-center text-gray-400 py-6">まだ調律の記録がありません。<br>カードから運勢を導いてみましょう。</div>`;
+        return;
+      }
+
+      listEl.innerHTML = history.map((item, idx) => `
+        <div class="flex items-center justify-between p-2.5 rounded-lg bg-midnight/80 border border-gold-primary/20">
+          <div>
+            <div class="text-[10px] text-gray-400">${item.date}</div>
+            <div class="text-xs text-gold-light font-medium">${item.title} <span class="text-[10px] text-gold-primary/80">(${item.tempo})</span></div>
+          </div>
+          <div class="text-[11px] text-gray-300 font-sans">
+            ${item.chord.split(' ')[0]}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function toggleHistoryModal(show) {
+      const modal = document.getElementById('historyModal');
+      if (show) {
+        renderHistory();
+        modal.classList.remove('hidden');
+      } else {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function resetFortuneForTesting() {
+      const resultView = document.getElementById('resultView');
+      const tuningView = document.getElementById('tuningView');
+      const soundRipple = document.getElementById('soundRipple');
+      const soundRipple2 = document.getElementById('soundRipple2');
+
+      resultView.classList.add('hidden');
+      resultView.classList.remove('flex');
+      
+      soundRipple.classList.add('hidden');
+      soundRipple2.classList.add('hidden');
+
+      tuningView.classList.remove('hidden', 'opacity-0', 'scale-95');
+      showToast('もう一度運勢を調律できます');
+    }
+
+    // ================= SNSシェア & トースト =================
+    function shareFortuneResult() {
+      if (!currentResult) return;
+      const text = `🎻 HiRoko ミュージックおみくじを調律しました！\n本日の運勢は【${currentResult.title} - ${currentResult.tempo}】\nラッキーコード：${currentResult.chord}\n#HiRoko #音みくじ #バイオリン`;
+      
+      if (navigator.share) {
+        navigator.share({
+          title: 'HiRoko 音みくじ',
+          text: text,
+          url: window.location.href,
+        }).catch(() => {});
+      } else {
+        // Fallback: クリップボードコピー
+        const dummyInput = document.createElement('textarea');
+        dummyInput.value = `${text}\n${window.location.href}`;
+        document.body.appendChild(dummyInput);
+        dummyInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(dummyInput);
+        showToast('結果テキストをコピーしました！SNSに投稿できます');
+      }
+    }
+
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      toast.textContent = msg;
+      toast.classList.remove('opacity-0');
+      toast.classList.add('opacity-100');
+      setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+      }, 2500);
+    }
+
+    // ================= 背景星空パーティクル演出 =================
+    const canvas = document.getElementById('ambientCanvas');
+    const ctx = canvas.getContext('2d');
+    let stars = [];
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      initStars();
+    }
+
+    function initStars() {
+      stars = [];
+      const count = Math.floor((canvas.width * canvas.height) / 8000);
+      for (let i = 0; i < count; i++) {
+        stars.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          radius: Math.random() * 1.2 + 0.3,
+          alpha: Math.random() * 0.8 + 0.2,
+          speed: Math.random() * 0.015 + 0.005,
+          color: Math.random() > 0.4 ? '#f5e7a9' : '#ffffff'
+        });
+      }
+    }
+
+    function animateStars() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      stars.forEach(star => {
+        star.alpha += star.speed;
+        if (star.alpha > 0.9 || star.alpha < 0.15) {
+          star.speed = -star.speed;
+        }
+        ctx.beginPath();
+        ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+        ctx.fillStyle = star.color;
+        ctx.globalAlpha = Math.max(0, Math.min(1, star.alpha));
+        ctx.shadowBlur = 4;
+        ctx.shadowColor = '#d4af37';
+        ctx.fill();
+      });
+      requestAnimationFrame(animateStars);
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    window.onload = function() {
+      resizeCanvas();
+      animateStars();
+    };
+  </script>
+</body>
+</html>
